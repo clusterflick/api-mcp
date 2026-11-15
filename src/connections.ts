@@ -4,7 +4,11 @@ import {
   type OAuthHelpers,
 } from "@cloudflare/workers-oauth-provider";
 import type { JWTVerifyGetKey } from "jose";
-import { AuthError, getBearerToken, verifyFirebaseToken } from "./auth";
+import {
+  AuthError,
+  getBearerToken,
+  verifyFirebaseToken,
+} from "@clusterflick/accounts/auth";
 
 /**
  * A reader's connected assistants, for /personalise to list and disconnect:

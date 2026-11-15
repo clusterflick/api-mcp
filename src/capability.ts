@@ -1,12 +1,16 @@
-import { Firestore } from "./firestore";
-import { getAccessToken, UpstreamError } from "./google-auth";
+import {
+  CapabilityId,
+  RememberedCapability,
+} from "@clusterflick/accounts/capabilities";
+import { Firestore } from "@clusterflick/accounts/firestore";
+import { getAccessToken } from "@clusterflick/accounts/google-auth";
 
 /**
  * Whether a reader has `assistantAccess`, which the site grants one account
- * at a time (`npm run grant-capability`): `users/{uid}/meta/capabilities`
- * holding the id. Checked when they sign in, and again on their calls.
+ * at a time (`npm run grant-capability`). Checked when they sign in, and
+ * again on their calls.
  */
-export const CAPABILITY = "assistantAccess";
+export const CAPABILITY = CapabilityId.AssistantAccess;
 
 /**
  * How long an answer is used before Firestore is asked again: a revoked
@@ -15,14 +19,11 @@ export const CAPABILITY = "assistantAccess";
  */
 export const CAPABILITY_TTL_MS = 5 * 60_000;
 
-/** A Firebase uid: what the site's rules let into a document path. */
-const UID = /^[A-Za-z0-9]{1,128}$/;
-
-const answers = new Map<string, { granted: boolean; checkedAt: number }>();
+const access = new RememberedCapability(CAPABILITY, CAPABILITY_TTL_MS);
 
 /** For the tests: forget every answer, as a new isolate would. */
 export function clearCapabilities() {
-  answers.clear();
+  access.clear();
 }
 
 type CapabilityEnv = Pick<
@@ -33,24 +34,16 @@ type CapabilityEnv = Pick<
 /**
  * Whether `uid` has the capability. `fresh` asks Firestore whatever was
  * remembered: at sign-in, so a reader granted it a minute ago can connect.
- * Throws `UpstreamError` when Firestore can't be asked, rather than guessing
- * either way.
+ * Throws `UpstreamError` when Firestore can't be asked, or for anything that
+ * isn't a uid, rather than guessing either way.
  */
-export async function hasAssistantAccess(
+export function hasAssistantAccess(
   env: CapabilityEnv,
   uid: string,
-  { fresh = false, now = Date.now() } = {},
+  options: { fresh?: boolean; now?: number } = {},
 ): Promise<boolean> {
-  if (!UID.test(uid)) throw new UpstreamError(`Not a uid: ${uid}`);
-  const known = answers.get(uid);
-  if (!fresh && known && now - known.checkedAt < CAPABILITY_TTL_MS) {
-    return known.granted;
-  }
   const db = new Firestore(env.FIREBASE_PROJECT_ID, () =>
     getAccessToken(env.FIREBASE_SERVICE_ACCOUNT),
   );
-  const capabilities = await db.get(`users/${uid}/meta/capabilities`);
-  const granted = capabilities !== null && CAPABILITY in capabilities;
-  answers.set(uid, { granted, checkedAt: now });
-  return granted;
+  return access.has(db, uid, options);
 }

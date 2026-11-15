@@ -25,7 +25,7 @@ import { getVenueIdsWithShowings } from "@clusterflick/catalogue/utils/get-venue
 import { getDistanceInMiles } from "@clusterflick/catalogue/utils/geo-distance";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { UpstreamError } from "./google-auth";
+import { UpstreamError } from "@clusterflick/accounts/google-auth";
 import { getListings, ListingsUnavailableError } from "./listings";
 import {
   presentFilm,

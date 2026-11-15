@@ -1,6 +1,6 @@
-import { Firestore } from "./firestore";
-import { getAccessToken } from "./google-auth";
-import { readFavouriteVenues, readList } from "./lists";
+import { Firestore } from "@clusterflick/accounts/firestore";
+import { getAccessToken } from "@clusterflick/accounts/google-auth";
+import { readFavouriteVenues, readList } from "@clusterflick/accounts/lists";
 
 /**
  * A reader's watchlist, Seen list and venues, as the ids the catalogue's

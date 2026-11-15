@@ -5,11 +5,15 @@ import {
   type AuthRequest,
   type OAuthHelpers,
 } from "@cloudflare/workers-oauth-provider";
-import { AuthError, verifyFirebaseToken, FIREBASE_JWKS } from "./auth";
+import {
+  AuthError,
+  verifyFirebaseToken,
+  FIREBASE_JWKS,
+} from "@clusterflick/accounts/auth";
 import { hasAssistantAccess } from "./capability";
 import { CONNECTIONS_PATH, handleConnections } from "./connections";
 import { LISTINGS } from "./scopes";
-import { UpstreamError } from "./google-auth";
+import { UpstreamError } from "@clusterflick/accounts/google-auth";
 import { consentPage, htmlResponse, noticePage } from "./pages";
 import type { JWTVerifyGetKey } from "jose";
 

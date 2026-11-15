@@ -123,8 +123,7 @@ on each call that may use them (`src/reader-lists.ts`): one read of
 remembered, so a film marked seen a minute ago isn't suggested. If that ever
 costs too much, the site already tells api-profiles when a reader's lists
 change, and could tell this Worker too. If they can't be read, the call is
-refused rather than answered without them. `src/lists.ts` is a copy of
-api-profiles' too.
+refused rather than answered without them.
 
 **After signing in**, an access token lasts an hour and is refreshed; a
 connection lasts while it's used and ends after 30 days without a call. Every
@@ -139,9 +138,10 @@ call to `/mcp` then:
   whether they were read. Sign-ins are logged as `mcp-sign-in`.
 
 Firestore is read as this Worker's own service account, with Cloud Datastore
-Viewer and nothing else. `src/auth.ts`, `src/google-auth.ts` and
-`src/firestore.ts` are copies of api-profiles' until the Workers share a
-package, which is to be the first job of alerts.
+Viewer and nothing else. The ID token checks, the service account's token,
+Firestore, the lists and the capability check are `@clusterflick/accounts`'
+(`packages/accounts` in the site's repo), which the other Workers that act for
+a reader share.
 
 **A reader's connections**, for /personalise to list and disconnect
 (`src/connections.ts`): `GET /connections` lists the assistants they've

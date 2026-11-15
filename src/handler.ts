@@ -7,7 +7,7 @@ import {
 import { env } from "cloudflare:workers";
 import type { Props } from "./authorize";
 import { hasAssistantAccess } from "./capability";
-import { UpstreamError } from "./google-auth";
+import { UpstreamError } from "@clusterflick/accounts/google-auth";
 import { readReaderLists } from "./reader-lists";
 import { LISTS } from "./scopes";
 import { createServer } from "./tools";

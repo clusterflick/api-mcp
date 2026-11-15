@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.2.4",
+    "@clusterflick/accounts": "0.1.0",
     "@clusterflick/catalogue": "0.2.0",
     "@modelcontextprotocol/server": "2.4.0",
     "jose": "6.2.17",

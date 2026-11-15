@@ -22,7 +22,7 @@ import {
 import { vi } from "vitest";
 import { useFirebaseKeys } from "../src/authorize";
 import { clearCapabilities } from "../src/capability";
-import { clearAccessToken } from "../src/google-auth";
+import { clearAccessToken } from "@clusterflick/accounts/google-auth";
 import worker from "../src/index";
 import { clearListings } from "../src/listings";
 

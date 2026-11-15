@@ -12,5 +12,12 @@
   },
   // api-tmdb-search has 8787 and api-profiles 8788.
   "dev": { "port": 8789 },
+  // Workers Paid has no spend cap, so a ceiling per request. An isolate's
+  // first call reads the listings: parsing 13MB, restoring them and building
+  // the vocabulary took ~120ms in Node on an M-series Mac, a search after
+  // that under 10ms. A preview (`wrangler dev --remote`) doesn't apply this
+  // limit, so it can't measure it. Headroom, not a fit: lower it once Workers
+  // Logs show what a first call really costs.
+  "limits": { "cpu_ms": 1000 },
   "observability": { "enabled": true },
 }

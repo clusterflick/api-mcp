@@ -13,9 +13,11 @@ A reader asks their assistant "what horror is on near Brixton this weekend?",
 and the assistant asks this Worker. The assistant does the thinking, so
 Clusterflick pays for no model; each tool call is an ordinary Worker request.
 
-**Not deployed yet.** Every tool is to need a reader signed in, and sign-in
-(OAuth, with Firebase's email link as the login step) is the next piece of
-work. Until then it runs locally, in its tests, and in `wrangler dev`.
+Every tool needs a reader signed in, with `assistantAccess`: a capability
+the site grants one account at a time, and invitation-only for now. See
+[Sign-in](#sign-in).
+
+**Not deployed yet.** It runs locally, in its tests, and in `wrangler dev`.
 
 ## Tools
 
@@ -71,14 +73,62 @@ Each load is logged as `{"event":"listings-loaded","meta","generatedAt",
 "films","ms"}`, and each failure as `{"event":"listings-unavailable",
 "message","held"}`.
 
+## Sign-in
+
+OAuth 2.1, as MCP's 2026-07-28 authorization spec has it, from Cloudflare's
+`@cloudflare/workers-oauth-provider`: it serves the discovery documents
+(`/.well-known/oauth-protected-resource/mcp`,
+`/.well-known/oauth-authorization-server`), client registration
+(`/oauth/register`), the token endpoint (`/oauth/token`), and answers `/mcp`
+without a valid token with the `401` that starts an assistant signing in. An
+assistant identifies itself with a Client ID Metadata Document, which the spec
+prefers, or by registering.
+
+What it leaves to us is `src/authorize.ts`:
+
+1. **`GET /authorize`** asks the reader whether to let the assistant search
+   as them, naming it (escaped: an assistant chooses its own name), saying
+   where access goes, warning when that's an app on their computer, and
+   giving a metadata document's domain. It can't be framed.
+2. **`POST /authorize`**: Deny goes back to the assistant with
+   `access_denied`. Allow goes to the site's `/connect/` (`CONNECT_URL`), since
+   Firebase's sign-in lives there, with the `state` the library made.
+3. **`POST /callback?state=…`**: `/connect/` posts the reader's Firebase ID
+   token (`idToken`). It's checked as api-profiles checks one, then the
+   account's `assistantAccess` is read fresh from Firestore. With it, the
+   reader goes back to the assistant with a code, signed in as their uid
+   (the token's `props`). Without it, they're told here, with a link back
+   that tells the assistant only `access_denied`.
+
+The library ties each step to the browser that started it with a cookie, and
+each works once, for ten minutes: a reader fetching their sign-in email has
+that long, and must open it in the same browser.
+
+**After signing in**, an access token lasts an hour and is refreshed; a
+connection lasts while it's used and ends after 30 days without a call. Every
+call to `/mcp` then:
+
+- **Is limited per reader**, 60 a minute (`CALL_LIMIT`), keyed on their uid.
+- **Checks the capability again**, remembered for five minutes
+  (`CAPABILITY_TTL_MS`), so revoking it stops their assistant within five
+  minutes. Firestore unreachable is a 503, never a guess either way.
+- **Is logged** as `{"event":"mcp-call","uid","tool","outcome","ms"}`, never
+  with what was searched for. Sign-ins are logged as `mcp-sign-in`.
+
+Firestore is read as this Worker's own service account, with Cloud Datastore
+Viewer and nothing else. `src/auth.ts`, `src/google-auth.ts` and
+`src/firestore.ts` are copies of api-profiles' until the Workers share a
+package, which is to be the first job of alerts.
+
+A daily cron sweeps the OAuth store (`OAUTH_KV`) for what KV's own expiry
+leaves.
+
 ## Requests
 
 `/mcp` is the MCP endpoint, served by the MCP SDK's stateless handler: a fresh
-server for each request, nothing shared between them. It speaks the
+server for each request, built for the reader making it. It speaks the
 2026-07-28 protocol and the stateless form of the 2025 one. A request from a
-browser page is refused unless the page is local (the MCP Inspector), so no
-other site's page can use a reader's sign-in from their browser. Anything else
-is a 404.
+browser page is refused unless the page is local (the MCP Inspector).
 
 ## Working on it
 
@@ -89,10 +139,22 @@ npm run lint      # tsc over the Worker and the tests
 npm run dev       # http://localhost:8789/mcp
 ```
 
-`npm run dev` reads the live site's listings. To try it with an assistant,
-point one at the local address, for example
-`claude mcp add --transport http clusterflick-local http://localhost:8789/mcp`,
-or open it in the MCP Inspector (`npx @modelcontextprotocol/inspector`).
+`npm test` runs the whole sign-in in the Workers runtime against fakes of
+the site, Google and Firestore, with a Firebase key made up for the tests;
+its bindings are pinned in `vitest.config.ts`, so nothing in `.dev.vars`
+reaches it.
+
+To sign in for real, locally:
+
+1. Copy `.dev.vars.example` to `.dev.vars`, with this Worker's service
+   account key, and the localhost addresses it gives.
+2. Run the site's `next dev` with `NEXT_PUBLIC_MCP_ORIGIN=http://localhost:8789`,
+   so its `/connect/` posts here.
+3. `npm run dev`, then point an assistant at `http://localhost:8789/mcp`, for
+   example `claude mcp add --transport http clusterflick-local
+http://localhost:8789/mcp`. It reads the live site's listings, and the
+   live project's capabilities: sign in as an account with
+   `assistantAccess`.
 
 To read listings from somewhere else, such as a local copy of the site's
 `public/data/`, set the origin: `npx wrangler dev --var

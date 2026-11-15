@@ -3,13 +3,44 @@
   "name": "clusterflick-api-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
-  // Not deployed until sign-in is in front of it: every tool needs a reader
-  // signed in, and none does yet. `wrangler dev` serves it locally.
+  // Outbound fetches go over the public internet, never same-zone routing:
+  // the OAuth library needs it to fetch a client's metadata document safely,
+  // and the listings come from clusterflick.com either way.
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  // Its own host, so the OAuth addresses (`/.well-known/…`) are clear of the
+  // site's. Cloudflare makes the DNS record and certificate on deploy.
+  "routes": [{ "pattern": "mcp.clusterflick.com", "custom_domain": true }],
   "workers_dev": false,
   "vars": {
-    // Where the listings are read from (`data/current.json`).
+    // Where the listings are read from (`data/current.json`), and what
+    // results link to.
     "SITE_ORIGIN": "https://clusterflick.com",
+    // This Worker, as assistants reach it: the OAuth resource and issuer.
+    "MCP_ORIGIN": "https://mcp.clusterflick.com",
+    // The site's page that signs a reader in for their assistant.
+    "CONNECT_URL": "https://clusterflick.com/connect/",
+    // Public: it's in the site's Firebase web config too.
+    "FIREBASE_PROJECT_ID": "clusterflick-com",
   },
+  // This Worker's own service account, with Cloud Datastore Viewer, to read
+  // a reader's capabilities. Set with `wrangler secret put`, locally in
+  // `.dev.vars`.
+  "secrets": { "required": ["FIREBASE_SERVICE_ACCOUNT"] },
+  // The OAuth library's store: clients, grants and tokens (tokens only as
+  // hashes, a grant's props encrypted). Replace the id with the namespace's
+  // own before the first deploy: `npx wrangler kv namespace create OAUTH_KV`.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "local-only" }],
+  // Per-location and approximate, as in the other Workers: it deters abuse
+  // rather than enforcing a quota. api-tmdb-search has 1xxx, api-profiles 2xxx.
+  "ratelimits": [
+    {
+      "name": "CALL_LIMIT",
+      "namespace_id": "3001",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+  // The OAuth store's sweep for what KV's own expiry leaves (src/index.ts).
+  "triggers": { "crons": ["17 4 * * *"] },
   // api-tmdb-search has 8787 and api-profiles 8788.
   "dev": { "port": 8789 },
   // Workers Paid has no spend cap, so a ceiling per request. An isolate's

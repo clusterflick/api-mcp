@@ -10,8 +10,10 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.2.4",
     "@clusterflick/catalogue": "0.2.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "jose": "6.2.17",
     "zod": "4.6.7"
   },
   "devDependencies": {

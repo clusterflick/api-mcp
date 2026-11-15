@@ -1,0 +1,12 @@
+# Copy to .dev.vars for `npm run dev`.
+#
+# This Worker's service account's JSON key, on one line, in single quotes:
+#   node -e 'console.log(`FIREBASE_SERVICE_ACCOUNT=\x27${JSON.stringify(require("./key.json"))}\x27`)' >> .dev.vars
+# `npm run dev` reads the live project's capabilities with it, read-only.
+FIREBASE_SERVICE_ACCOUNT=
+
+# The Worker as `wrangler dev` serves it, and the site's `next dev`, whose
+# /connect/ page signs you in (run it with NEXT_PUBLIC_MCP_ORIGIN pointing
+# here). The listings still come from the live site.
+MCP_ORIGIN=http://localhost:8789
+CONNECT_URL=http://localhost:3000/connect/

@@ -2,19 +2,24 @@ import { DATA_FORMAT_VERSION } from "@clusterflick/catalogue/data-format.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHECK_EVERY_MS,
-  clearListings,
   getListings,
   ListingsUnavailableError,
   RETRY_AFTER_MS,
 } from "../src/listings";
-import { call, connect, META, ORIGIN, release, serveSite } from "./helpers";
+import {
+  call,
+  connect,
+  META,
+  ORIGIN,
+  release,
+  resetWorker,
+  serveSite,
+} from "./helpers";
 
 let errors: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  clearListings();
-  vi.spyOn(console, "log").mockImplementation(() => {});
-  errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  ({ error: errors } = resetWorker());
 });
 
 afterEach(() => {

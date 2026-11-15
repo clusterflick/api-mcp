@@ -53,20 +53,45 @@ const refusal = (text: string) => ({
   isError: true,
 });
 
+/**
+ * A tool's answer, and its log line: who asked, which tool, how it went and
+ * how long it took. Never what was searched for, which says what someone's
+ * planning to do.
+ */
 async function run(
   origin: string,
+  uid: string,
+  name: string,
   tool: (data: CinemaData) => unknown | Promise<unknown>,
 ) {
+  const started = Date.now();
+  const log = (outcome: string) =>
+    console.log(
+      JSON.stringify({
+        event: "mcp-call",
+        uid,
+        tool: name,
+        outcome,
+        ms: Date.now() - started,
+      }),
+    );
   try {
     const { data } = await getListings(origin);
-    return answer(await tool(data));
+    const result = answer(await tool(data));
+    log("answered");
+    return result;
   } catch (error) {
-    if (error instanceof ResolveError) return refusal(error.message);
+    if (error instanceof ResolveError) {
+      log("refused");
+      return refusal(error.message);
+    }
     if (error instanceof ListingsUnavailableError) {
+      log("unavailable");
       return refusal(
         "Clusterflick's listings couldn't be loaded just now. Try again in a minute.",
       );
     }
+    log("failed");
     throw error;
   }
 }
@@ -328,8 +353,11 @@ function findFilm(data: CinemaData, title: string, year?: string) {
   );
 }
 
-/** The MCP server: a fresh one for each request, as the handler asks. */
-export function createServer(origin: string) {
+/**
+ * The MCP server: a fresh one for each request, as the handler asks, for the
+ * reader `uid` making it.
+ */
+export function createServer(origin: string, uid: string) {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -349,7 +377,7 @@ export function createServer(origin: string) {
       annotations,
     },
     (input) =>
-      run(origin, async (data) =>
+      run(origin, uid, "search_screenings", async (data) =>
         searchScreenings(data, origin, await buildSearch(data, input), input),
       ),
   );
@@ -378,7 +406,7 @@ export function createServer(origin: string) {
       annotations,
     },
     ({ title, year, limit }) =>
-      run(origin, (data) => {
+      run(origin, uid, "get_film", (data) => {
         const movie = findFilm(data, title, year);
         // Only what hasn't started: the site hides a finished showing too.
         const upcoming = apply(
@@ -415,7 +443,7 @@ export function createServer(origin: string) {
       annotations,
     },
     ({ near, withinMiles, limit }) =>
-      run(origin, async (data) => {
+      run(origin, uid, "list_venues", async (data) => {
         const showing = getVenueIdsWithShowings(data.movies);
         let venues = Object.values(data.venues)
           .filter(({ id }) => showing.has(id))

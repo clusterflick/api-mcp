@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearListings } from "../src/listings";
-import { call, connect, ORIGIN, release, serveSite } from "./helpers";
+import {
+  call,
+  connect,
+  ORIGIN,
+  release,
+  resetWorker,
+  serveSite,
+} from "./helpers";
 
 beforeEach(() => {
-  clearListings();
-  vi.spyOn(console, "log").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  resetWorker();
 });
 
 afterEach(() => {

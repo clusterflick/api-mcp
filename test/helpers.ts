@@ -388,13 +388,16 @@ const base64url = (bytes: ArrayBuffer | Uint8Array) =>
     .replace(/=+$/, "");
 
 /** An assistant registering itself, as one without a metadata document does. */
-export async function registerClient(name = "Test Assistant") {
+export async function registerClient(
+  name = "Test Assistant",
+  redirectUri = REDIRECT_URI,
+) {
   const response = await request(`${MCP}/oauth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_name: name,
-      redirect_uris: [REDIRECT_URI],
+      redirect_uris: [redirectUri],
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
@@ -409,7 +412,10 @@ export async function registerClient(name = "Test Assistant") {
 }
 
 /** Where the assistant sends the reader, with PKCE as MCP requires. */
-export async function authorizeUrl(clientId: string) {
+export async function authorizeUrl(
+  clientId: string,
+  redirectUri = REDIRECT_URI,
+) {
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = base64url(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
@@ -418,7 +424,7 @@ export async function authorizeUrl(clientId: string) {
   url.search = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: "listings",
     state: "assistant-state",
     code_challenge: challenge,

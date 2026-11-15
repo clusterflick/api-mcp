@@ -58,12 +58,14 @@ export function consentPage(details: ConsentDescription, handle: string) {
   return page(
     `Connect ${details.clientName}`,
     `<h1>Let <strong>${name}</strong> search Clusterflick for you?</h1>
-<p>${origin} If you allow it, you'll sign in to Clusterflick next, and access goes to <strong>${escape(details.redirectHost)}</strong>.</p>
-${
-  details.redirectIsLoopback
-    ? `<p class="warning">That's an app on this computer. Only continue if you started connecting from it just now.</p>`
-    : ""
-}
+<p>${origin} If you allow it, you'll sign in to Clusterflick next, and access goes to ${
+      // An app on this computer (Claude Code, say) receives it at a local
+      // address: said in words, with the hostname kept, as MCP requires.
+      details.redirectIsLoopback
+        ? `<strong>an app on this computer</strong> (${escape(details.redirectHost)}).</p>
+<p class="warning">Only continue if you started connecting from it just now.</p>`
+        : `<strong>${escape(details.redirectHost)}</strong>.</p>`
+    }
 <p>It will be able to search London's screenings, films and venues. It won't see your lists or change anything.</p>
 <form method="post">
 <input type="hidden" name="handle" value="${escape(handle)}">

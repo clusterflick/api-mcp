@@ -74,8 +74,23 @@ describe("the consent page", () => {
     const html = await response.text();
     expect(html).not.toContain("<script>");
     expect(html).toContain("&#60;script&#62;");
-    expect(html).toContain("assistant.example");
+    expect(html).toContain("<strong>assistant.example</strong>");
     expect(html).toContain("registered itself");
+    expect(html).not.toContain("an app on this computer");
+  });
+
+  it("says in words when access goes to an app on this computer", async () => {
+    serveSite();
+    const local = "http://localhost:33418/callback";
+    const { url } = await authorizeUrl(
+      await registerClient("Claude Code", local),
+      local,
+    );
+    const html = await (await new Browser().fetch(url)).text();
+    expect(html).toContain(
+      "<strong>an app on this computer</strong> (localhost)",
+    );
+    expect(html).toContain("Only continue if you started connecting from it");
   });
 
   it("sends the reader to the site to sign in when they allow it", async () => {

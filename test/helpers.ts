@@ -444,7 +444,7 @@ export const handleOf = (html: string) =>
  */
 export async function signInSteps(
   browser = new Browser(),
-  { idToken }: { idToken?: string } = {},
+  { idToken, uid = UID }: { idToken?: string; uid?: string } = {},
 ) {
   const clientId = await registerClient();
   const { url, verifier } = await authorizeUrl(clientId);
@@ -456,14 +456,20 @@ export async function signInSteps(
   const connect = new URL(allowed.headers.get("Location")!);
   const state = connect.searchParams.get("state")!;
   const callback = await browser.post(`${MCP}/callback?state=${state}`, {
-    idToken: idToken ?? (await signFirebaseToken()),
+    idToken: idToken ?? (await signFirebaseToken({ sub: uid })),
   });
   return { browser, clientId, verifier, connect, state, callback };
 }
 
-/** A reader connected: the assistant's access token. */
-export async function signIn() {
-  const { clientId, verifier, callback } = await signInSteps();
+/**
+ * A reader connected: the assistant's access token. The OAuth store lasts
+ * across tests, so a test counting a reader's connections signs in as a
+ * reader of its own (`uid`), granted in the fake Firestore.
+ */
+export async function signIn(uid = UID) {
+  const { clientId, verifier, callback } = await signInSteps(new Browser(), {
+    uid,
+  });
   const location = new URL(callback.headers.get("Location")!);
   const code = location.searchParams.get("code");
   if (!code) throw new Error(`No code: ${location}`);

@@ -120,6 +120,15 @@ Viewer and nothing else. `src/auth.ts`, `src/google-auth.ts` and
 `src/firestore.ts` are copies of api-profiles' until the Workers share a
 package, which is to be the first job of alerts.
 
+**A reader's connections**, for /personalise to list and disconnect
+(`src/connections.ts`): `GET /connections` lists the assistants they've
+connected, by name (a metadata document's domain beside it), newest first;
+`DELETE /connections/<id>` disconnects one, and its tokens go with it. Both
+take the reader's Firebase ID token, answer the site's origin
+(`CONNECT_URL`'s) for CORS, and skip the capability, so a reader whose access
+was revoked can still see and remove what's connected. When it was last used
+isn't kept: it would be a write on every call.
+
 A daily cron sweeps the OAuth store (`OAUTH_KV`) for what KV's own expiry
 leaves.
 

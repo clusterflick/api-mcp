@@ -7,6 +7,7 @@ import {
 } from "@cloudflare/workers-oauth-provider";
 import { AuthError, verifyFirebaseToken, FIREBASE_JWKS } from "./auth";
 import { hasAssistantAccess } from "./capability";
+import { CONNECTIONS_PATH, handleConnections } from "./connections";
 import { UpstreamError } from "./google-auth";
 import { consentPage, htmlResponse, noticePage } from "./pages";
 import type { JWTVerifyGetKey } from "jose";
@@ -230,6 +231,12 @@ export async function handleDefault(request: Request, workerEnv: Env) {
   }
   if (pathname === CALLBACK_PATH && request.method === "POST") {
     return finishSignIn(request, env);
+  }
+  if (
+    pathname === CONNECTIONS_PATH ||
+    pathname.startsWith(`${CONNECTIONS_PATH}/`)
+  ) {
+    return handleConnections(request, env, firebaseKeys);
   }
   return new Response("Not found", {
     status: 404,

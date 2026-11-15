@@ -2,6 +2,7 @@ import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { env } from "cloudflare:workers";
 import { AUTHORIZE_PATH, handleDefault, type Props } from "./authorize";
 import { handleMcp, MCP_PATH } from "./handler";
+import { LISTINGS, SCOPES } from "./scopes";
 
 /**
  * The Worker: the OAuth library in front of the MCP endpoint. It serves the
@@ -12,9 +13,6 @@ import { handleMcp, MCP_PATH } from "./handler";
  */
 
 const DAY = 86_400;
-
-// Not exported: workerd takes every export of the entry module as a handler.
-const SCOPE = "listings";
 
 const provider = new OAuthProvider<Env>({
   apiRoute: MCP_PATH,
@@ -35,8 +33,8 @@ const provider = new OAuthProvider<Env>({
   // don't yet. Either way the reader approves it by name.
   clientRegistrationEndpoint: "/oauth/register",
   clientIdMetadataDocumentEnabled: true,
-  scopesSupported: [SCOPE, "offline_access"],
-  requiredScopes: [SCOPE],
+  scopesSupported: [...SCOPES, "offline_access"],
+  requiredScopes: [LISTINGS],
   resourceMetadata: {
     resource: `${env.MCP_ORIGIN}${MCP_PATH}`,
     authorization_servers: [env.MCP_ORIGIN],

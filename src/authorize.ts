@@ -8,6 +8,7 @@ import {
 import { AuthError, verifyFirebaseToken, FIREBASE_JWKS } from "./auth";
 import { hasAssistantAccess } from "./capability";
 import { CONNECTIONS_PATH, handleConnections } from "./connections";
+import { LISTINGS } from "./scopes";
 import { UpstreamError } from "./google-auth";
 import { consentPage, htmlResponse, noticePage } from "./pages";
 import type { JWTVerifyGetKey } from "jose";
@@ -105,7 +106,10 @@ async function answerConsent(request: Request, env: AuthEnv) {
       const denied = await oauth.denyConsent(request, handle);
       return new Response(null, { status: 302, headers: denied.headers });
     }
-    const approved = await oauth.approveConsent(request, handle);
+    // What the reader allowed: always the listings, their lists unless they
+    // unticked them, and anything else the assistant asked for (refresh).
+    const scope = [...new Set([LISTINGS, ...form.getAll("scope").map(String)])];
+    const approved = await oauth.approveConsent(request, handle, { scope });
     const { state, headers } = await oauth.beginUpstream(approved.request, {
       headers: approved.headers,
     });

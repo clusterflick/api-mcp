@@ -1,4 +1,5 @@
 import type { ConsentDescription } from "@cloudflare/workers-oauth-provider";
+import { LISTS } from "./scopes";
 
 /**
  * The few pages the Worker shows a reader while their assistant signs in:
@@ -22,6 +23,9 @@ h1 { margin: 0 0 12px; font-size: 22px; line-height: 1.3; }
 p { margin: 0 0 12px; color: #d8d8e0; }
 strong { color: #ffffff; }
 .warning { color: #fade05; }
+.choice { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 0;
+  color: #d8d8e0; cursor: pointer; }
+.choice input { margin-top: 5px; accent-color: #f12869; }
 .actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
 button, a.button { font: inherit; padding: 10px 18px; border-radius: 8px;
   border: 1px solid #f12869; cursor: pointer; text-decoration: none; }
@@ -66,9 +70,20 @@ export function consentPage(details: ConsentDescription, handle: string) {
 <p class="warning">Only continue if you started connecting from it just now.</p>`
         : `<strong>${escape(details.redirectHost)}</strong>.</p>`
     }
-<p>It will be able to search London's screenings, films and venues. It won't see your lists or change anything.</p>
+<p>It will be able to search London's screenings, films and venues. It can't change anything on your account.</p>
 <form method="post">
 <input type="hidden" name="handle" value="${escape(handle)}">
+${
+  // What the assistant asked for, beside what the reader chooses here; the
+  // library grants only scopes it supports, whatever a form says.
+  details.scope
+    .filter((scope) => scope !== LISTS)
+    .map(
+      (scope) => `<input type="hidden" name="scope" value="${escape(scope)}">`,
+    )
+    .join("\n")
+}
+<label class="choice"><input type="checkbox" name="scope" value="${LISTS}" checked> Also let it see your watchlist, Seen list and venues, so it can leave out what you've seen and find what's on from your watchlist or at your venues.</label>
 <div class="actions">
 <button class="allow" name="decision" value="allow">Allow</button>
 <button class="deny" name="decision" value="deny">Deny</button>

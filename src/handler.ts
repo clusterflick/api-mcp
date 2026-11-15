@@ -8,6 +8,8 @@ import { env } from "cloudflare:workers";
 import type { Props } from "./authorize";
 import { hasAssistantAccess } from "./capability";
 import { UpstreamError } from "./google-auth";
+import { readReaderLists } from "./reader-lists";
+import { LISTS } from "./scopes";
 import { createServer } from "./tools";
 
 /**
@@ -26,9 +28,15 @@ export const MCP_PATH = "/mcp";
  * Stateless: a fresh server for each request, built for the reader making
  * it, so nothing is shared between readers.
  */
-const mcp = createMcpHandler(({ authInfo }) =>
-  createServer(env.SITE_ORIGIN, String(authInfo?.extra?.uid ?? "")),
-);
+const mcp = createMcpHandler(({ authInfo }) => {
+  const uid = String(authInfo?.extra?.uid ?? "");
+  return createServer(env.SITE_ORIGIN, {
+    uid,
+    // Only a connection the reader gave their lists to reads them.
+    canSeeLists: authInfo?.scopes.includes(LISTS) ?? false,
+    readLists: () => readReaderLists(env, uid),
+  });
+});
 
 const json = (status: number, body: unknown, headers: HeadersInit = {}) =>
   Response.json(body, {

@@ -262,6 +262,31 @@ export function serveSite(
         if (firestoreStatus !== 200) {
           return new Response("unavailable", { status: firestoreStatus });
         }
+        if (url.pathname === `/v1/${ROOT}:batchGet`) {
+          const { documents: names, mask } = (await request.json()) as {
+            documents: string[];
+            mask: { fieldPaths: string[] };
+          };
+          return Response.json(
+            names.map((full) => {
+              const path = full.slice(ROOT.length + 1);
+              const data = documents()[path];
+              if (!data) return { missing: full };
+              const kept = Object.fromEntries(
+                Object.entries(data).filter(([k]) =>
+                  mask.fieldPaths.includes(k),
+                ),
+              );
+              return {
+                found: {
+                  name: full,
+                  fields: (encodeValue(kept).mapValue as { fields: unknown })
+                    .fields,
+                },
+              };
+            }),
+          );
+        }
         const path = decodeURIComponent(url.pathname).slice(
           `/v1/${ROOT}/`.length,
         );
@@ -370,7 +395,7 @@ export class Browser {
     return response;
   }
 
-  post(input: string, form: Record<string, string>) {
+  post(input: string, form: Record<string, string> | URLSearchParams) {
     return this.fetch(input, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -439,20 +464,46 @@ export const handleOf = (html: string) =>
   html.match(/name="handle" value="([^"]+)"/)?.[1] ?? "";
 
 /**
+ * The consent form as a browser posts it, allowing: the handle, the hidden
+ * scopes, and the lists tick-box unless `lists` is false (it's ticked to
+ * start with).
+ */
+export function consentForm(html: string, { lists = true } = {}) {
+  const form = new URLSearchParams({
+    handle: handleOf(html),
+    decision: "allow",
+  });
+  for (const [, scope] of html.matchAll(
+    /<input type="hidden" name="scope" value="([^"]+)">/g,
+  )) {
+    form.append("scope", scope);
+  }
+  const box = html.match(
+    /<input type="checkbox" name="scope" value="([^"]+)"( checked)?>/,
+  );
+  if (box && lists) form.append("scope", box[1]);
+  return form;
+}
+
+/**
  * Every step a reader takes to connect, up to the callback's answer: the
  * consent page, Allow, and /connect/ posting their sign-in.
  */
 export async function signInSteps(
   browser = new Browser(),
-  { idToken, uid = UID }: { idToken?: string; uid?: string } = {},
+  {
+    idToken,
+    uid = UID,
+    lists = true,
+  }: { idToken?: string; uid?: string; lists?: boolean } = {},
 ) {
   const clientId = await registerClient();
   const { url, verifier } = await authorizeUrl(clientId);
   const consent = await browser.fetch(url);
-  const allowed = await browser.post(url, {
-    handle: handleOf(await consent.text()),
-    decision: "allow",
-  });
+  const allowed = await browser.post(
+    url,
+    consentForm(await consent.text(), { lists }),
+  );
   const connect = new URL(allowed.headers.get("Location")!);
   const state = connect.searchParams.get("state")!;
   const callback = await browser.post(`${MCP}/callback?state=${state}`, {
@@ -466,9 +517,10 @@ export async function signInSteps(
  * across tests, so a test counting a reader's connections signs in as a
  * reader of its own (`uid`), granted in the fake Firestore.
  */
-export async function signIn(uid = UID) {
+export async function signIn(uid = UID, { lists = true } = {}) {
   const { clientId, verifier, callback } = await signInSteps(new Browser(), {
     uid,
+    lists,
   });
   const location = new URL(callback.headers.get("Location")!);
   const code = location.searchParams.get("code");

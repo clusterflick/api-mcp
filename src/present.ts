@@ -1,3 +1,4 @@
+import type { ReaderLists } from "./reader-lists";
 import { FORMAT_GROUPS } from "@clusterflick/catalogue/filters";
 import type {
   AccessibilityFeature,
@@ -64,11 +65,18 @@ function trueKeys<T extends string>(record: Partial<Record<T, unknown>>) {
   return (Object.keys(record) as T[]).filter((key) => record[key]);
 }
 
+/**
+ * The reader's lists, when this connection may see them, to mark what's on
+ * them: only ever `true`, so an answer without lists reads the same.
+ */
+export type Marks = ReaderLists | null;
+
 export function presentPerformance(
   data: CinemaData,
   movie: Movie,
   performance: MoviePerformance,
   origin: string,
+  marks: Marks = null,
 ) {
   const showing = movie.showings[performance.showingId];
   const venue = data.venues[showing.venueId];
@@ -83,6 +91,7 @@ export function presentPerformance(
     ...londonTime(performance.time),
     venue: venue.name,
     venueUrl: origin + getVenueUrl(venue),
+    ...(marks?.venues.has(venue.id) ? { yourVenue: true } : {}),
     bookingUrl: performance.bookingUrl,
     // The venue's own title, when it isn't the film's: "Halloween + Q&A".
     ...(showing.title && showing.title !== movie.title
@@ -127,7 +136,10 @@ export function presentFilm(
   data: CinemaData,
   movie: Movie,
   origin: string,
-  { detailed = false } = {},
+  {
+    detailed = false,
+    marks = null,
+  }: { detailed?: boolean; marks?: Marks } = {},
 ) {
   const genres = namesOf(movie.genres, data.genres).filter(
     (name) => name !== "Uncategorised",
@@ -138,6 +150,8 @@ export function presentFilm(
     title: movie.title,
     ...(movie.year ? { year: movie.year } : {}),
     url: origin + getMovieUrl(movie),
+    ...(marks?.watchlist.has(movie.id) ? { onWatchlist: true } : {}),
+    ...(marks?.seen.has(movie.id) ? { seen: true } : {}),
     ...(genres.length > 0 ? { genres } : {}),
     ...(directors.length > 0 ? { directors } : {}),
     ...(movie.duration ? { minutes: Math.round(movie.duration / 60_000) } : {}),
@@ -169,22 +183,28 @@ export function presentPerformances(
   movie: Movie,
   origin: string,
   limit: number,
+  marks: Marks = null,
 ) {
   const sorted = [...movie.performances].sort((a, b) => a.time - b.time);
   return {
     showings: sorted
       .slice(0, limit)
       .map((performance) =>
-        presentPerformance(data, movie, performance, origin),
+        presentPerformance(data, movie, performance, origin, marks),
       ),
     totalShowings: sorted.length,
   };
 }
 
-export function presentVenue(venue: Venue, origin: string) {
+export function presentVenue(
+  venue: Venue,
+  origin: string,
+  marks: Marks = null,
+) {
   return {
     name: venue.name,
     url: origin + getVenueUrl(venue),
+    ...(marks?.venues.has(venue.id) ? { yourVenue: true } : {}),
     address: venue.address,
     website: venue.url,
     kind:

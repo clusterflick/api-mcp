@@ -31,6 +31,12 @@ export type Connection = {
   domain?: string;
   /** Epoch milliseconds. */
   connectedAt: number;
+  /**
+   * What the reader allowed it, as scopes (`src/scopes.ts`), for the panel
+   * to say what it can and can't do: one connected before a scope existed,
+   * or with it unticked, doesn't have it.
+   */
+  scopes: string[];
 };
 
 /** The id a grant is stored under: what the library makes, nothing else. */
@@ -58,6 +64,7 @@ async function describe(
     name: name || domain || "An assistant",
     ...(domain ? { domain } : {}),
     connectedAt: grant.createdAt * 1000,
+    scopes: grant.scope,
   };
 }
 

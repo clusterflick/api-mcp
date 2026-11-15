@@ -25,8 +25,14 @@ import { getVenueIdsWithShowings } from "@clusterflick/catalogue/utils/get-venue
 import { getDistanceInMiles } from "@clusterflick/catalogue/utils/geo-distance";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { UpstreamError } from "./google-auth";
 import { getListings, ListingsUnavailableError } from "./listings";
-import { presentFilm, presentPerformances, presentVenue } from "./present";
+import {
+  presentFilm,
+  presentPerformances,
+  presentVenue,
+  type Marks,
+} from "./present";
 import {
   applyValues,
   resolvePlace,
@@ -35,6 +41,7 @@ import {
   type Kind,
   type Place,
 } from "./resolve";
+import type { ReaderLists } from "./reader-lists";
 
 export const SERVER_NAME = "clusterflick";
 export const SERVER_VERSION = "0.1.0";
@@ -60,24 +67,47 @@ const refusal = (text: string) => ({
  */
 async function run(
   origin: string,
-  uid: string,
+  reader: Reader,
   name: string,
-  tool: (data: CinemaData) => unknown | Promise<unknown>,
+  tool: (data: CinemaData, marks: Marks) => unknown | Promise<unknown>,
 ) {
   const started = Date.now();
   const log = (outcome: string) =>
     console.log(
       JSON.stringify({
         event: "mcp-call",
-        uid,
+        uid: reader.uid,
         tool: name,
         outcome,
+        // Whether their lists were read: never what's on them.
+        lists: reader.canSeeLists,
         ms: Date.now() - started,
       }),
     );
   try {
     const { data } = await getListings(origin);
-    const result = answer(await tool(data));
+    let marks: Marks = null;
+    if (reader.canSeeLists) {
+      try {
+        marks = await reader.readLists();
+      } catch (error) {
+        if (!(error instanceof UpstreamError)) throw error;
+        console.error(
+          JSON.stringify({
+            event: "mcp-lists-unavailable",
+            uid: reader.uid,
+            message: error.message,
+          }),
+        );
+        log("unavailable");
+        // Not answered without them: an answer that quietly ignores the
+        // reader's lists would suggest what they've seen.
+        return refusal(
+          "Your Clusterflick lists couldn't be read just now. Try again in a minute.",
+        );
+      }
+    }
+    const result = answer(await tool(data, marks));
     log("answered");
     return result;
   } catch (error) {
@@ -171,6 +201,20 @@ const searchInput = z.object({
     .optional()
     .describe("Tomatometer, 0-100."),
   hideSoldOut: z.boolean().optional(),
+  hideSeen: z
+    .boolean()
+    .optional()
+    .describe("Leave out films on the reader's Seen list. Needs their lists."),
+  watchlistOnly: z
+    .boolean()
+    .optional()
+    .describe("Only films on the reader's watchlist. Needs their lists."),
+  myVenuesOnly: z
+    .boolean()
+    .optional()
+    .describe(
+      "Only the reader's venues (My Venues); with `near`, those of them near it. Needs their lists.",
+    ),
   limit: z
     .number()
     .int()
@@ -211,7 +255,14 @@ function venuesNear(data: CinemaData, place: Place, withinMiles?: number) {
   return { radius, ids: getVenueIdsNear(place.point, radius, venues) };
 }
 
-async function buildSearch(data: CinemaData, input: SearchInput) {
+/**
+ * What a connection without the reader's lists says when asked to use them:
+ * how to give them, rather than an answer that ignores them.
+ */
+export const NO_LISTS =
+  "This connection can't see the reader's Clusterflick lists. To allow it, they disconnect it in the AI assistant panel at clusterflick.com/personalise, then connect again with their lists ticked.";
+
+async function buildSearch(data: CinemaData, input: SearchInput, marks: Marks) {
   let state: FilterState = getDefaultState();
   const today = getLondonMidnightTimestamp();
   const from = input.from ? parseDate(input.from, "from") : today;
@@ -265,6 +316,36 @@ async function buildSearch(data: CinemaData, input: SearchInput) {
     throw new ResolveError("`withinMiles` needs `near`.");
   }
 
+  if (input.hideSeen || input.watchlistOnly || input.myVenuesOnly) {
+    if (!marks) throw new ResolveError(NO_LISTS);
+  }
+  if (marks && input.hideSeen) {
+    state = { ...state, [FilterId.HideSeen]: [...marks.seen] };
+  }
+  if (marks && input.watchlistOnly) {
+    // An empty selection is no filter at all: refused, not every film.
+    if (marks.watchlist.size === 0) {
+      throw new ResolveError("The reader's watchlist is empty.");
+    }
+    state = { ...state, [FilterId.Movies]: [...marks.watchlist] };
+  }
+  if (marks && input.myVenuesOnly) {
+    if (input.venues) {
+      throw new ResolveError("Give `myVenuesOnly` or `venues`, not both.");
+    }
+    if (marks.venues.size === 0) {
+      throw new ResolveError(
+        "The reader hasn't added any venues to My Venues.",
+      );
+    }
+    const near = state[FilterId.Venues];
+    const mine = near
+      ? near.filter((id) => marks.venues.has(id))
+      : [...marks.venues];
+    state = { ...state, [FilterId.Venues]: mine };
+    if (venueOrigin) venueOrigin = null;
+  }
+
   if (input.minLetterboxd !== undefined) {
     state = { ...state, [FilterId.LetterboxdRating]: input.minLetterboxd };
   }
@@ -289,6 +370,7 @@ export function searchScreenings(
   origin: string,
   search: Awaited<ReturnType<typeof buildSearch>>,
   input: Pick<SearchInput, "limit" | "showingsPerFilm">,
+  marks: Marks = null,
 ) {
   const { state, venueOrigin } = search;
   const found = Object.values(apply(data.movies, state)).sort(
@@ -313,8 +395,8 @@ export function searchScreenings(
     searched: `${description.events} • ${description.venues} • ${description.dates}`,
     totalFilms: found.length,
     films: found.slice(0, limit).map((movie) => ({
-      ...presentFilm(data, movie, origin),
-      ...presentPerformances(data, movie, origin, perFilm),
+      ...presentFilm(data, movie, origin, { marks }),
+      ...presentPerformances(data, movie, origin, perFilm, marks),
     })),
     // The same search on the site, for everything past the limit.
     onClusterflick: buildFilterUrl(state, `${origin}/catalogue/`),
@@ -353,16 +435,23 @@ function findFilm(data: CinemaData, title: string, year?: string) {
   );
 }
 
+/** Who's asking, and whether this connection may read their lists. */
+export type Reader = {
+  uid: string;
+  canSeeLists: boolean;
+  readLists: () => Promise<ReaderLists>;
+};
+
 /**
  * The MCP server: a fresh one for each request, as the handler asks, for the
- * reader `uid` making it.
+ * reader making it.
  */
-export function createServer(origin: string, uid: string) {
+export function createServer(origin: string, reader: Reader) {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       instructions:
-        "Clusterflick lists every film showing in London, from 450+ cinemas and venues. Times are London time. Link people to the `url` of a film or venue, and to `bookingUrl` to book.",
+        "Clusterflick lists every film showing in London, from 450+ cinemas and venues. Times are London time. Link people to the `url` of a film or venue, and to `bookingUrl` to book. When the reader has allowed their lists, results are marked `onWatchlist`, `seen` and `yourVenue`, and searches can leave out what they've seen or keep to their watchlist or venues.",
     },
   );
   const annotations = { readOnlyHint: true, openWorldHint: false };
@@ -377,8 +466,14 @@ export function createServer(origin: string, uid: string) {
       annotations,
     },
     (input) =>
-      run(origin, uid, "search_screenings", async (data) =>
-        searchScreenings(data, origin, await buildSearch(data, input), input),
+      run(origin, reader, "search_screenings", async (data, marks) =>
+        searchScreenings(
+          data,
+          origin,
+          await buildSearch(data, input, marks),
+          input,
+          marks,
+        ),
       ),
   );
 
@@ -406,7 +501,7 @@ export function createServer(origin: string, uid: string) {
       annotations,
     },
     ({ title, year, limit }) =>
-      run(origin, uid, "get_film", (data) => {
+      run(origin, reader, "get_film", (data, marks) => {
         const movie = findFilm(data, title, year);
         // Only what hasn't started: the site hides a finished showing too.
         const upcoming = apply(
@@ -418,8 +513,8 @@ export function createServer(origin: string, uid: string) {
           },
         )[movie.id] ?? { ...movie, performances: [], showings: {} };
         return {
-          ...presentFilm(data, movie, origin, { detailed: true }),
-          ...presentPerformances(data, upcoming, origin, limit ?? 30),
+          ...presentFilm(data, movie, origin, { detailed: true, marks }),
+          ...presentPerformances(data, upcoming, origin, limit ?? 30, marks),
         };
       }),
   );
@@ -443,7 +538,7 @@ export function createServer(origin: string, uid: string) {
       annotations,
     },
     ({ near, withinMiles, limit }) =>
-      run(origin, uid, "list_venues", async (data) => {
+      run(origin, reader, "list_venues", async (data, marks) => {
         const showing = getVenueIdsWithShowings(data.movies);
         let venues = Object.values(data.venues)
           .filter(({ id }) => showing.has(id))
@@ -467,7 +562,7 @@ export function createServer(origin: string, uid: string) {
           ...(place ? { near: place.label } : {}),
           totalVenues: venues.length,
           venues: venues.slice(0, limit ?? 50).map((venue) => ({
-            ...presentVenue(venue, origin),
+            ...presentVenue(venue, origin, marks),
             ...(place
               ? {
                   miles:

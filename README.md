@@ -34,6 +34,14 @@ off: a search quietly wider than the one asked for reads as an answer.
 | `get_film`          | One film by title (and year, when titles clash): its details and every showing from today.                                                                                                                                                          |
 | `list_venues`       | The venues with something showing: all of them, or those near a place, nearest first.                                                                                                                                                               |
 
+**The reader's lists**, when they allowed them (below): every film on their
+watchlist or Seen list is marked `onWatchlist` or `seen`, and every showing or
+venue among their venues `yourVenue`. `search_screenings` can leave out what
+they've seen (`hideSeen`), and keep to their watchlist (`watchlistOnly`) or
+their venues (`myVenuesOnly`, with `near` those of them near it). An empty
+list is refused rather than searched, since an empty selection is no filter
+at all; a connection without the lists says how to allow them.
+
 `search_screenings` starts from the site's own default search (films,
 multiple films and short films over the next week, finished showings hidden),
 so the same search finds the same films on both. Its answer says what was
@@ -87,7 +95,8 @@ prefers, or by registering.
 What it leaves to us is `src/authorize.ts`:
 
 1. **`GET /authorize`** asks the reader whether to let the assistant search
-   as them, naming it (escaped: an assistant chooses its own name), saying
+   as them, and whether it may see their lists (a tick-box, ticked to start
+   with), naming it (escaped: an assistant chooses its own name), saying
    where access goes, warning when that's an app on their computer, and
    giving a metadata document's domain. It can't be framed.
 2. **`POST /authorize`**: Deny goes back to the assistant with
@@ -104,6 +113,19 @@ The library ties each step to the browser that started it with a cookie, and
 each works once, for ten minutes: a reader fetching their sign-in email has
 that long, and must open it in the same browser.
 
+**Scopes** (`src/scopes.ts`): every connection has `listings`; `lists`, the
+watchlist, Seen list and venues, is the reader's to untick. A connection keeps
+the scopes it was given, so one made before a scope existed, or with it
+unticked, lacks it until the reader connects it again; `/connections` returns
+each connection's scopes for /personalise to say so. The lists are read fresh
+on each call that may use them (`src/reader-lists.ts`): one read of
+`users/{uid}`, masked to `watchlist`, `seen` and `favouriteVenues`, never
+remembered, so a film marked seen a minute ago isn't suggested. If that ever
+costs too much, the site already tells api-profiles when a reader's lists
+change, and could tell this Worker too. If they can't be read, the call is
+refused rather than answered without them. `src/lists.ts` is a copy of
+api-profiles' too.
+
 **After signing in**, an access token lasts an hour and is refreshed; a
 connection lasts while it's used and ends after 30 days without a call. Every
 call to `/mcp` then:
@@ -112,8 +134,9 @@ call to `/mcp` then:
 - **Checks the capability again**, remembered for five minutes
   (`CAPABILITY_TTL_MS`), so revoking it stops their assistant within five
   minutes. Firestore unreachable is a 503, never a guess either way.
-- **Is logged** as `{"event":"mcp-call","uid","tool","outcome","ms"}`, never
-  with what was searched for. Sign-ins are logged as `mcp-sign-in`.
+- **Is logged** as `{"event":"mcp-call","uid","tool","outcome","lists","ms"}`,
+  never with what was searched for or what's on the reader's lists, only
+  whether they were read. Sign-ins are logged as `mcp-sign-in`.
 
 Firestore is read as this Worker's own service account, with Cloud Datastore
 Viewer and nothing else. `src/auth.ts`, `src/google-auth.ts` and

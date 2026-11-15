@@ -27,9 +27,11 @@
   // `.dev.vars`.
   "secrets": { "required": ["FIREBASE_SERVICE_ACCOUNT"] },
   // The OAuth library's store: clients, grants and tokens (tokens only as
-  // hashes, a grant's props encrypted). Replace the id with the namespace's
-  // own before the first deploy: `npx wrangler kv namespace create OAUTH_KV`.
-  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "local-only" }],
+  // hashes, a grant's props encrypted). `wrangler dev` and the tests keep
+  // their own local copy.
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "88c270f40b6246d7956c77b5e167891b" },
+  ],
   // Per-location and approximate, as in the other Workers: it deters abuse
   // rather than enforcing a quota. api-tmdb-search has 1xxx, api-profiles 2xxx.
   "ratelimits": [

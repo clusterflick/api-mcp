@@ -17,7 +17,7 @@ Every tool needs a reader signed in, with `assistantAccess`: a capability
 the site grants one account at a time, and invitation-only for now. See
 [Sign-in](#sign-in).
 
-**Not deployed yet.** It runs locally, in its tests, and in `wrangler dev`.
+It's at `https://mcp.clusterflick.com/mcp`.
 
 ## Tools
 
@@ -160,6 +160,58 @@ To read listings from somewhere else, such as a local copy of the site's
 `public/data/`, set the origin: `npx wrangler dev --var
 SITE_ORIGIN:http://127.0.0.1:8791`. The copy needs a `current.json` naming
 its meta file, which the site's build writes.
+
+## Deployment
+
+`.github/workflows/deploy.yml` lints and tests every push and pull request,
+and deploys on pushes to `main`. The service account key is a secret stored
+on the Worker: it persists across deploys and never goes in the repo or CI.
+
+The site's `/connect/` must be live before the Worker is any use: without it,
+every sign-in ends at a 404.
+
+`mcp.clusterflick.com` is a custom domain (`wrangler.jsonc`'s `routes`):
+Cloudflare made its DNS record and certificate on the first deploy.
+
+### The service account
+
+In the Google Cloud console for `clusterflick-com`, under IAM → Service
+accounts, there's one for this Worker alone, `api-mcp`, with the **Cloud
+Datastore Viewer** role (`roles/datastore.viewer`) and nothing else. That
+role reads every document in the project, since Firestore has no narrower IAM
+role; what this Worker reads is limited by its code, to a reader's
+capabilities.
+
+### First deploy
+
+As api-profiles' was: CI can't create a Worker whose `wrangler.jsonc`
+requires a secret, and `wrangler secret put` only works on one that exists.
+So the first deploy was from a machine with the key, creating the Worker and
+its secret together, from a file holding only the secret (`.dev.vars` also
+points the Worker at localhost):
+
+```sh
+grep "^FIREBASE_SERVICE_ACCOUNT=" .dev.vars > /tmp/mcp.env
+npx wrangler deploy --secrets-file /tmp/mcp.env
+rm /tmp/mcp.env
+```
+
+The OAuth store was created first, and its id is in `wrangler.jsonc`:
+`npx wrangler kv namespace create OAUTH_KV`.
+
+CI deploys with the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit
+Cloudflare Workers" template, scoped to the account and the
+`clusterflick.com` zone) and `CLOUDFLARE_ACCOUNT_ID`.
+
+### Rotating the key
+
+Create a new key for the service account, then:
+
+```sh
+node -e 'process.stdout.write(JSON.stringify(require("./new-key.json")))' | npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
+```
+
+and delete the old key in the console.
 
 ## Licence
 

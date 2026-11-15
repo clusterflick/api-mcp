@@ -1,0 +1,25 @@
+{
+  "name": "api-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "lint": "tsc --noEmit && tsc --noEmit -p test",
+    "format": "prettier --write --ignore-path .gitignore --ignore-path .prettierignore .",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@clusterflick/catalogue": "0.2.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.8.0",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "prettier": "3.10.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.160.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clusterflick-api-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // Not deployed until sign-in is in front of it: every tool needs a reader
+  // signed in, and none does yet. `wrangler dev` serves it locally.
+  "workers_dev": false,
+  "vars": {
+    // Where the listings are read from (`data/current.json`).
+    "SITE_ORIGIN": "https://clusterflick.com",
+  },
+  // api-tmdb-search has 8787 and api-profiles 8788.
+  "dev": { "port": 8789 },
+  "observability": { "enabled": true },
+}

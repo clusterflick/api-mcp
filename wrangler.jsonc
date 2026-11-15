@@ -41,8 +41,11 @@
   ],
   // The OAuth store's sweep for what KV's own expiry leaves (src/index.ts).
   "triggers": { "crons": ["17 4 * * *"] },
-  // api-tmdb-search has 8787 and api-profiles 8788.
-  "dev": { "port": 8789 },
+  // api-tmdb-search has 8787 and api-profiles 8788. `host` keeps requests
+  // addressed to localhost: otherwise `wrangler dev` rewrites them to the
+  // custom domain above, and the OAuth addresses it builds from them stop
+  // matching `MCP_ORIGIN`.
+  "dev": { "port": 8789, "host": "localhost:8789" },
   // Workers Paid has no spend cap, so a ceiling per request. An isolate's
   // first call reads the listings: parsing 13MB, restoring them and building
   // the vocabulary took ~120ms in Node on an M-series Mac, a search after

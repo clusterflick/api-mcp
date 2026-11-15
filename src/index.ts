@@ -13,7 +13,8 @@ import { handleMcp, MCP_PATH } from "./handler";
 
 const DAY = 86_400;
 
-export const SCOPE = "listings";
+// Not exported: workerd takes every export of the entry module as a handler.
+const SCOPE = "listings";
 
 const provider = new OAuthProvider<Env>({
   apiRoute: MCP_PATH,

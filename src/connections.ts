@@ -14,6 +14,9 @@ import { AuthError, getBearerToken, verifyFirebaseToken } from "./auth";
  * - `DELETE /connections/<id>`: disconnect one. Its tokens go with it, so
  *   the assistant's next call is refused, and it would have to sign in
  *   again.
+ * - `DELETE /connections`: disconnect them all, which the site does first
+ *   when a reader deletes their account: once the account is gone there's
+ *   no ID token left to do it with, and the grants would outlive it.
  *
  * Signed in with a Firebase ID token, as api-profiles' purge is, and called
  * from the site's pages, so it answers the site's origin (CORS). Not behind
@@ -68,7 +71,7 @@ async function describe(
   };
 }
 
-async function list(oauth: OAuthHelpers, uid: string) {
+async function listGrants(oauth: OAuthHelpers, uid: string) {
   const grants: GrantSummary[] = [];
   let cursor: string | undefined;
   do {
@@ -76,6 +79,11 @@ async function list(oauth: OAuthHelpers, uid: string) {
     grants.push(...page.items);
     cursor = page.cursor;
   } while (cursor);
+  return grants;
+}
+
+async function list(oauth: OAuthHelpers, uid: string) {
+  const grants = await listGrants(oauth, uid);
   const connections = await Promise.all(grants.map((g) => describe(oauth, g)));
   return connections.sort((a, b) => b.connectedAt - a.connectedAt);
 }
@@ -111,9 +119,13 @@ export async function handleConnections(
   const { pathname } = new URL(request.url);
   const id = pathname.slice(CONNECTIONS_PATH.length + 1);
   const listing = pathname === CONNECTIONS_PATH && request.method === "GET";
+  const removingAll =
+    pathname === CONNECTIONS_PATH && request.method === "DELETE";
   const removing =
     pathname.startsWith(`${CONNECTIONS_PATH}/`) && request.method === "DELETE";
-  if (!listing && !removing) return reply(404, { error: "not_found" });
+  if (!listing && !removing && !removingAll) {
+    return reply(404, { error: "not_found" });
+  }
   if (removing && !GRANT_ID.test(id)) return reply(404, { error: "not_found" });
 
   let uid: string;
@@ -129,6 +141,19 @@ export async function handleConnections(
   const oauth = env.OAUTH_PROVIDER;
   if (listing) {
     return reply(200, { connections: await list(oauth, uid) });
+  }
+  if (removingAll) {
+    const grants = await listGrants(oauth, uid);
+    await Promise.all(grants.map((grant) => oauth.revokeGrant(grant.id, uid)));
+    console.log(
+      JSON.stringify({
+        event: "mcp-disconnect",
+        uid,
+        all: true,
+        count: grants.length,
+      }),
+    );
+    return reply(204);
   }
   // Keyed by reader as well as id, so only their own grant can go; one
   // that's already gone is gone either way.

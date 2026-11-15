@@ -146,7 +146,9 @@ package, which is to be the first job of alerts.
 **A reader's connections**, for /personalise to list and disconnect
 (`src/connections.ts`): `GET /connections` lists the assistants they've
 connected, by name (a metadata document's domain beside it), newest first;
-`DELETE /connections/<id>` disconnects one, and its tokens go with it. Both
+`DELETE /connections/<id>` disconnects one, and its tokens go with it;
+`DELETE /connections` disconnects them all, which the site calls first when a
+reader deletes their account, while it still has an ID token to call with. All
 take the reader's Firebase ID token, answer the site's origin
 (`CONNECT_URL`'s) for CORS, and skip the capability, so a reader whose access
 was revoked can still see and remove what's connected. When it was last used

@@ -97,6 +97,50 @@ describe("a reader's connections", () => {
     expect(logged(log, "mcp-disconnect")).toHaveLength(1);
   });
 
+  it("disconnect all of them, as deleting the account does", async () => {
+    const first = await connect(await signIn(uid));
+    const second = await connect(await signIn(uid));
+    expect((await listConnections()).connections).toHaveLength(2);
+
+    const removed = await request(`${MCP}/connections`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${await signFirebaseToken({ sub: uid })}`,
+        Origin: ORIGIN,
+      },
+    });
+    expect(removed.status).toBe(204);
+    expect(removed.headers.get("Access-Control-Allow-Origin")).toBe(ORIGIN);
+    expect((await listConnections()).connections).toEqual([]);
+    await expect(call(first, "list_venues")).rejects.toThrow();
+    await expect(call(second, "list_venues")).rejects.toThrow();
+    expect(logged(log, "mcp-disconnect")[0]).toMatchObject({
+      all: true,
+      count: 2,
+    });
+  });
+
+  it("disconnect all of them, even when there are none", async () => {
+    const removed = await request(`${MCP}/connections`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${await signFirebaseToken({ sub: uid })}`,
+      },
+    });
+    expect(removed.status).toBe(204);
+  });
+
+  it("can't disconnect all of another reader's", async () => {
+    await signIn(uid);
+    await request(`${MCP}/connections`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${await signFirebaseToken({ sub: "someoneElse" })}`,
+      },
+    });
+    expect((await listConnections()).connections).toHaveLength(1);
+  });
+
   it("can't disconnect another reader's", async () => {
     await signIn(uid);
     const [{ id }] = (await listConnections()).connections;
@@ -113,10 +157,13 @@ describe("a reader's connections", () => {
     ["no sign-in", undefined, 401],
     ["a sign-in that isn't the site's", "not-a-token", 401],
   ])("are refused with %s", async (_, token, status) => {
-    const response = await request(`${MCP}/connections`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    expect(response.status).toBe(status);
+    for (const method of ["GET", "DELETE"]) {
+      const response = await request(`${MCP}/connections`, {
+        method,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      expect(response.status).toBe(status);
+    }
   });
 
   it("answer the site's pages, and no other site's", async () => {

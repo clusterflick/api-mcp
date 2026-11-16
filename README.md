@@ -62,7 +62,9 @@ The Worker reads the listings the site publishes, not the pipeline's combined
 data: the site's build joins in the ratings and more. It finds them from
 `https://clusterflick.com/data/current.json`, the one file there with a fixed
 name, and reads them with `@clusterflick/catalogue`, the package the site
-searches with, so a search here means what it means there.
+searches with, so a search here means what it means there. The fetching and
+its checks are the package's (`utils/fetch-listings`), shared with the alerts
+Worker; how long they're held, and the fallback below, are this Worker's.
 
 - **Held in the isolate**, about 21MB parsed, and shared by every call it
   serves.

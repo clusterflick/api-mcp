@@ -119,6 +119,74 @@ describe("search_screenings", () => {
     expect(value.searched).toContain("Dalston Kingsland");
   });
 
+  it("says what a short answer's dates leave out, and when it's on", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "search_screenings", {
+      directors: ["agnes varda"],
+    });
+    // The Gleaners and I is a month away, past the default week.
+    expect(titles(value)).toEqual(["Cléo from 5 to 7"]);
+    expect(value.outsideDates).toMatchObject({
+      films: 1,
+      next: { time: "18:00" },
+    });
+    const { next, onClusterflick } = value.outsideDates as {
+      next: { date: string };
+      onClusterflick: string;
+    };
+    expect(next.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(onClusterflick).toContain(`${ORIGIN}/catalogue/`);
+    expect(onClusterflick).not.toBe(value.onClusterflick);
+  });
+
+  it("says when nothing lies outside a short answer's dates", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "search_screenings", {
+      title: "halloween",
+    });
+    expect(titles(value)).toEqual(["Halloween"]);
+    expect(value.outsideDates).toEqual({ films: 0 });
+    expect(value).not.toHaveProperty("suggestions");
+  });
+
+  it("leaves the dates out of a long answer, as the site does a full grid", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "search_screenings", {
+      categories: ["films", "quizzes"],
+      to: new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10),
+    });
+    // Past the site's three, so not "nothing outside" either: not said at all.
+    expect(value.totalFilms).toBe(4);
+    expect(value).not.toHaveProperty("outsideDates");
+  });
+
+  it("suggests what would find something when nothing matches", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "search_screenings", {
+      title: "gleaners",
+    });
+    expect(value.totalFilms).toBe(0);
+    expect(value).not.toHaveProperty("outsideDates");
+    const [first] = value.suggestions as {
+      suggestion: string;
+      changes: string[];
+      totalFilms: number;
+      onClusterflick: string;
+    }[];
+    expect(first.changes[0]).toMatch(/^Any date: next showing /);
+    expect(first.totalFilms).toBe(1);
+    expect(first.onClusterflick).toContain(`${ORIGIN}/catalogue/`);
+  });
+
+  it("suggests nothing when nothing like it is showing", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "search_screenings", {
+      title: "xyzzy plugh",
+    });
+    expect(value.totalFilms).toBe(0);
+    expect(value.suggestions).toEqual([]);
+  });
+
   it.each([
     [
       { genres: ["westerns"] },

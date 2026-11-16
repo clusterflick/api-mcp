@@ -47,6 +47,26 @@ multiple films and short films over the next week, finished showings hidden),
 so the same search finds the same films on both. Its answer says what was
 searched, in the site's words, and links the same search on the site.
 
+**An answer says what it leaves out**, as the site's grid does, because an
+assistant reads a short answer as the whole one. A search for a title usually
+asks whether a film is on at all, and the default week can hide the answer: a
+Zootropolis double bill in April went unmentioned until these were
+added. Both come from `@clusterflick/catalogue`, so they say what the site
+says.
+
+- **A short answer** (one to three films, the site's `THIN_RESULT_LIMIT`)
+  carries `outsideDates`: how many more films match outside the dates, when
+  the next is on, and the search over every date on the site. It's
+  `getHiddenByDate`, the site's "Expecting more results?" line. `{ films: 0 }`
+  says nothing does, so the short answer is the whole one. A longer answer
+  leaves it out, as the site leaves the line off a full grid.
+- **An empty answer** carries `suggestions`: the site's empty-grid offers
+  (`suggestFilterRelaxations`), each the change that would find something, in
+  the site's words, with its count and the search on the site. Dates are one
+  change among the rest (another event type, a wider radius, a title read as a
+  genre or a director). An empty list says no change of one or two filters
+  finds anything: nothing like it is showing.
+
 A place is a Tube, Overground, Elizabeth line or DLR station, or a venue, as
 on the site. Not a postcode or a borough: the site has neither as a place.
 

@@ -4,13 +4,21 @@ import {
   apply,
   buildFilterUrl,
   describeFilters,
+  buildPeopleIndex,
   getDefaultState,
+  getHiddenByDate,
+  getPeopleVocabulary,
+  suggestFilterRelaxations,
+  THIN_RESULT_LIMIT,
   type FilterState,
+  type PeopleIndex,
 } from "@clusterflick/catalogue/filters";
 import { normalizeToWords } from "@clusterflick/catalogue/filters/normalize";
 import {
+  getPlaceVenues,
   getVenueIdsNear,
   type PlaceRadius,
+  type VenueOrigin,
 } from "@clusterflick/catalogue/places";
 import type { CinemaData, Movie } from "@clusterflick/catalogue/types";
 import {
@@ -30,6 +38,7 @@ import { z } from "zod";
 import { UpstreamError } from "@clusterflick/accounts/google-auth";
 import { getListings, ListingsUnavailableError } from "./listings";
 import {
+  londonTime,
   presentFilm,
   presentIncludedFilm,
   presentPerformances,
@@ -300,7 +309,7 @@ async function buildSearch(data: CinemaData, input: SearchInput, marks: Marks) {
     ...resolveAll(data, "venue", input.venues),
   ]);
 
-  let venueOrigin = null;
+  let venueOrigin: VenueOrigin | null = null;
   if (input.near) {
     if (input.venues) {
       throw new ResolveError("Give `near` or `venues`, not both.");
@@ -368,6 +377,75 @@ async function buildSearch(data: CinemaData, input: SearchInput, marks: Marks) {
 const firstTime = (movie: Movie) =>
   Math.min(...movie.performances.map(({ time }) => time));
 
+/**
+ * The people credited on what's showing, indexed once per release: scanning
+ * every name for each empty search is what the site indexes once to avoid.
+ */
+const peopleIndexes = new WeakMap<CinemaData, PeopleIndex>();
+function getPeopleIndex(data: CinemaData) {
+  let index = peopleIndexes.get(data);
+  if (!index) {
+    index = buildPeopleIndex(getPeopleVocabulary(data.movies, data.people));
+    peopleIndexes.set(data, index);
+  }
+  return index;
+}
+
+/**
+ * What the dates are keeping out of a short answer: the site's "Expecting
+ * more results?" line. A title search usually asks whether a film is on at
+ * all, and a week is often too short to answer it, so a short answer says
+ * what lies past its dates; `{ films: 0 }` says nothing does, so a short
+ * answer is the whole one. Left off a long answer, as the site leaves it off
+ * a full grid, and off an empty one, which has `suggestions`.
+ */
+function outsideDates(
+  data: CinemaData,
+  origin: string,
+  state: FilterState,
+  shown: number,
+) {
+  if (shown === 0 || shown > THIN_RESULT_LIMIT) return undefined;
+  const hidden = getHiddenByDate(data.movies, state, shown);
+  if (!hidden) return { films: 0 };
+  return {
+    films: hidden.count,
+    next: londonTime(hidden.from),
+    onClusterflick: buildFilterUrl(hidden.state, `${origin}/catalogue/`),
+  };
+}
+
+/**
+ * What would find something when nothing matched: the site's suggestions on
+ * an empty grid, each a real search with its count. An empty list says no
+ * change of one or two filters finds anything, which is itself the answer:
+ * nothing like it is showing.
+ */
+function suggestions(
+  data: CinemaData,
+  origin: string,
+  state: FilterState,
+  venueOrigin: VenueOrigin | null,
+) {
+  return suggestFilterRelaxations({
+    movies: data.movies,
+    state,
+    categories: EVENT_CATEGORIES,
+    venues: data.venues,
+    genres: data.genres,
+    people: getPeopleIndex(data),
+    venueOrigin,
+    placeVenues: getPlaceVenues(data.venues, data.movies),
+  }).map((offer) => ({
+    suggestion: offer.headline,
+    changes: offer.changes.map(({ label, detail }) =>
+      detail ? `${label}: ${detail}` : label,
+    ),
+    totalFilms: offer.count,
+    onClusterflick: buildFilterUrl(offer.state, `${origin}/catalogue/`),
+  }));
+}
+
 export function searchScreenings(
   data: CinemaData,
   origin: string,
@@ -394,7 +472,7 @@ export function searchScreenings(
     cinemaVenueIds: getCinemaVenueIds(data.venues),
     venueOrigin,
   });
-  return {
+  const result = {
     searched: `${description.events} • ${description.venues} • ${description.dates}`,
     totalFilms: found.length,
     films: found.slice(0, limit).map((movie) => ({
@@ -403,7 +481,12 @@ export function searchScreenings(
     })),
     // The same search on the site, for everything past the limit.
     onClusterflick: buildFilterUrl(state, `${origin}/catalogue/`),
+    ...(found.length === 0
+      ? { suggestions: suggestions(data, origin, state, venueOrigin) }
+      : {}),
   };
+  const hidden = outsideDates(data, origin, state, found.length);
+  return hidden ? { ...result, outsideDates: hidden } : result;
 }
 
 function findFilm(data: CinemaData, title: string, year?: string) {
@@ -481,7 +564,7 @@ export function createServer(origin: string, reader: Reader) {
     {
       title: "Search London screenings",
       description:
-        "Films and events showing in London, soonest first, with their showings. Defaults to films over the next week, everywhere. Every value is plain words, as a person would say them; a value that names nothing, or more than one thing, is an error saying which.",
+        "Films and events showing in London, soonest first, with their showings. Defaults to films over the next week, everywhere. Every value is plain words, as a person would say them; a value that names nothing, or more than one thing, is an error saying which. A short answer carries `outsideDates`: how many more films match outside the dates, and when the next is on (`films: 0` means none do). An empty one carries `suggestions`: the changes that would find something, each with its count; none means nothing like it is showing. To ask whether one film is on at all, use `get_film`, which has every date.",
       inputSchema: searchInput,
       annotations,
     },

@@ -22,6 +22,7 @@ import {
 } from "@clusterflick/catalogue/utils/format-date";
 import { getCinemaVenueIds } from "@clusterflick/catalogue/utils/get-cinema-venue-ids";
 import { getContainingEvents } from "@clusterflick/catalogue/utils/get-containing-events";
+import { getIncludedListings } from "@clusterflick/catalogue/utils/get-included-listings";
 import { getVenueIdsWithShowings } from "@clusterflick/catalogue/utils/get-venues-with-showings";
 import { getDistanceInMiles } from "@clusterflick/catalogue/utils/geo-distance";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -30,6 +31,7 @@ import { UpstreamError } from "@clusterflick/accounts/google-auth";
 import { getListings, ListingsUnavailableError } from "./listings";
 import {
   presentFilm,
+  presentIncludedFilm,
   presentPerformances,
   presentVenue,
   type Marks,
@@ -407,7 +409,7 @@ export function searchScreenings(
 function findFilm(data: CinemaData, title: string, year?: string) {
   const wanted = normalizeToWords(title).join(" ");
   const named = (movie: Movie) =>
-    [movie.title, movie.originalTitle]
+    [movie.title, movie.originalTitle, ...(movie.alternativeTitles ?? [])]
       .filter((name): name is string => Boolean(name))
       .map((name) => normalizeToWords(name).join(" "));
   const all = Object.values(data.movies).filter(
@@ -500,7 +502,7 @@ export function createServer(origin: string, reader: Reader) {
     {
       title: "Get a film",
       description:
-        "One film or event by title: what it is, and every showing from today, soonest first. `partOf` is the marathons, double bills and other events that also screen it: each a listing of its own, booked as a whole, so its times are the event's and are not counted in `totalShowings`.",
+        "One film or event by title: what it is, and every showing from today, soonest first. `partOf` is the marathons, double bills and other events that also screen it: each a listing of its own, booked as a whole, so its times are the event's and are not counted in `totalShowings`. For an event, `screens` is the films in it, and a film also showing on its own carries those showings: booked separately, and not counted in the event's `totalShowings`.",
       inputSchema: z.object({
         title: z.string().min(1).describe("The title, as it's listed."),
         year: z
@@ -537,8 +539,23 @@ export function createServer(origin: string, reader: Reader) {
             ...presentFilm(data, event, origin, { marks }),
             ...presentPerformances(data, event, origin, 5, marks),
           }));
+        // The reverse: an event names its films, but nothing on the event says
+        // they're on by themselves too. Left out, an assistant asked about a
+        // double bill reads its one night as the only chance to see either.
+        const screens = getIncludedListings(movie, data.movies).map(
+          ({ film, listing }) => {
+            const presented = presentIncludedFilm(film, listing, origin, marks);
+            const own = listing ? upcoming(listing) : undefined;
+            if (!own || own.performances.length === 0) return presented;
+            return {
+              ...presented,
+              ...presentPerformances(data, own, origin, 5, marks),
+            };
+          },
+        );
         return {
           ...presentFilm(data, movie, origin, { detailed: true, marks }),
+          ...(screens.length > 0 ? { screens } : {}),
           ...presentPerformances(
             data,
             upcoming(movie),

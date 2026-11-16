@@ -210,7 +210,16 @@ describe("get_film", () => {
     expect(value.partOf).toEqual([
       expect.objectContaining({
         title: "Varda Double Bill",
-        screens: ["Cléo from 5 to 7", "The Gleaners and I"],
+        screens: [
+          {
+            title: "Cléo from 5 to 7",
+            url: "https://clusterflick.com/movies/m2/cleo-from-5-to-7",
+          },
+          {
+            title: "The Gleaners and I",
+            url: "https://clusterflick.com/movies/m3/the-gleaners-and-i",
+          },
+        ],
         totalShowings: 1,
         showings: [
           expect.objectContaining({
@@ -220,6 +229,93 @@ describe("get_film", () => {
         ],
       }),
     ]);
+  });
+
+  it("gives an event's films their own showings, apart from the event's", async () => {
+    const published = release();
+    published.meta.mapping["0"].push("m5");
+    Object.assign(published.chunk, {
+      m5: {
+        title: "Varda Double Bill",
+        normalizedTitle: "varda double bill",
+        isUnmatched: true,
+        includedMovies: [
+          { id: "m2", title: "Cléo from 5 to 7", year: "1962" },
+          // Not listed on its own: no page, and nothing more to book.
+          { id: "m9", title: "Vagabond", year: "1985" },
+        ],
+        showings: {
+          v1: {
+            category: "multiple-movies",
+            url: "https://riocinema.org.uk/varda",
+            venueId: "rio",
+          },
+        },
+        performances: [
+          {
+            showingId: "v1",
+            time: at(3, 18),
+            bookingUrl: "https://riocinema.org.uk/book/6",
+          },
+        ],
+      },
+    });
+    serveSite(published);
+    const { value } = await call(await connect(), "get_film", {
+      title: "Varda Double Bill",
+    });
+    expect(value.totalShowings).toBe(1);
+    expect(value.screens).toEqual([
+      expect.objectContaining({
+        title: "Cléo from 5 to 7",
+        year: "1962",
+        url: "https://clusterflick.com/movies/m2/cleo-from-5-to-7",
+        totalShowings: 1,
+        showings: [
+          expect.objectContaining({
+            venue: "BFI Southbank",
+            bookingUrl: "https://whatson.bfi.org.uk/book/3",
+          }),
+        ],
+      }),
+      { title: "Vagabond", year: "1985" },
+    ]);
+  });
+
+  it("finds a film by another English title it was released under", async () => {
+    const published = release();
+    published.meta.mapping["0"].push("m7");
+    Object.assign(published.chunk, {
+      m7: {
+        title: "Zootopia",
+        normalizedTitle: "zootopia",
+        alternativeTitles: ["Zootropolis"],
+        year: "2016",
+        showings: {
+          z1: {
+            category: "movie",
+            url: "https://riocinema.org.uk/zootropolis",
+            venueId: "rio",
+          },
+        },
+        performances: [
+          {
+            showingId: "z1",
+            time: at(2, 11),
+            bookingUrl: "https://riocinema.org.uk/book/8",
+          },
+        ],
+      },
+    });
+    serveSite(published);
+    const { value } = await call(await connect(), "get_film", {
+      title: "Zootropolis",
+    });
+    expect(value).toMatchObject({
+      title: "Zootopia",
+      alternativeTitles: ["Zootropolis"],
+      totalShowings: 1,
+    });
   });
 
   it("has no partOf when no event screens it", async () => {

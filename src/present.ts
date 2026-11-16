@@ -3,12 +3,14 @@ import { FORMAT_GROUPS } from "@clusterflick/catalogue/filters";
 import type {
   AccessibilityFeature,
   CinemaData,
+  IncludedMovie,
   Movie,
   MoviePerformance,
   OccasionType,
   Venue,
 } from "@clusterflick/catalogue/types";
 import { ACCESSIBILITY_LABELS } from "@clusterflick/catalogue/utils/accessibility-labels";
+import { getIncludedListings } from "@clusterflick/catalogue/utils/get-included-listings";
 import { getMovieUrl } from "@clusterflick/catalogue/utils/get-movie-url";
 import { getVenueUrl } from "@clusterflick/catalogue/utils/get-venue-url";
 import { OCCASION_LABELS } from "@clusterflick/catalogue/utils/occasion-labels";
@@ -131,6 +133,26 @@ const namesOf = (
     .filter((name): name is string => Boolean(name))
     .slice(0, limit);
 
+/**
+ * A film a multi-film event screens: its title and year, and its page when it
+ * is also listed on its own. A film with no listing of its own has no page,
+ * so it carries no `url`.
+ */
+export function presentIncludedFilm(
+  film: IncludedMovie,
+  listing: Movie | undefined,
+  origin: string,
+  marks: Marks = null,
+) {
+  return {
+    title: film.title,
+    ...(film.year ? { year: film.year } : {}),
+    ...(listing ? { url: origin + getMovieUrl(listing) } : {}),
+    ...(marks?.watchlist.has(film.id) ? { onWatchlist: true } : {}),
+    ...(marks?.seen.has(film.id) ? { seen: true } : {}),
+  };
+}
+
 /** A film's own details, without its showings. */
 export function presentFilm(
   data: CinemaData,
@@ -158,12 +180,20 @@ export function presentFilm(
     ...(movie.classification ? { certificate: movie.classification } : {}),
     ...(Object.keys(filmRatings).length > 0 ? { ratings: filmRatings } : {}),
     ...(movie.includedMovies?.length
-      ? { screens: movie.includedMovies.map(({ title }) => title) }
+      ? {
+          screens: getIncludedListings(movie, data.movies).map(
+            ({ film, listing }) =>
+              presentIncludedFilm(film, listing, origin, marks),
+          ),
+        }
       : {}),
     ...(detailed
       ? {
           ...(movie.originalTitle
             ? { originalTitle: movie.originalTitle }
+            : {}),
+          ...(movie.alternativeTitles?.length
+            ? { alternativeTitles: movie.alternativeTitles }
             : {}),
           ...(movie.overview ? { overview: movie.overview } : {}),
           cast: namesOf(movie.actors, data.people, 10),

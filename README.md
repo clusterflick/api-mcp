@@ -31,7 +31,7 @@ off: a search quietly wider than the one asked for reads as an answer.
 | Tool                | What it answers                                                                                                                                                                                                                                     |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `search_screenings` | Films and events showing, soonest first, with their showings: by title, dates, time of day, near a station or venue, venues, event type, genre, director, cast, accessibility, occasion, format, festival, film club, minimum ratings and sold-out. |
-| `get_film`          | One film by title (and year, when titles clash): its details and every showing from today.                                                                                                                                                          |
+| `get_film`          | One film by title (and year, when titles clash): its details, every showing from today, and the marathons and double bills that also screen it.                                                                                                     |
 | `list_venues`       | The venues with something showing: all of them, or those near a place, nearest first.                                                                                                                                                               |
 
 **The reader's lists**, when they allowed them (below): every film on their

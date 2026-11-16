@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  at,
   call,
   connect,
   ORIGIN,
@@ -150,6 +151,83 @@ describe("get_film", () => {
       totalShowings: 1,
     });
     expect(value.showings[0].venue).toBe("BFI Southbank");
+  });
+
+  it("names the events that also screen it, apart from its own showings", async () => {
+    const published = release();
+    published.meta.mapping["0"].push("m5", "m6");
+    Object.assign(published.chunk, {
+      m5: {
+        title: "Varda Double Bill",
+        normalizedTitle: "varda double bill",
+        isUnmatched: true,
+        includedMovies: [
+          { id: "m2", title: "Cléo from 5 to 7" },
+          { id: "m3", title: "The Gleaners and I" },
+        ],
+        showings: {
+          v1: {
+            category: "multiple-movies",
+            url: "https://riocinema.org.uk/varda",
+            venueId: "rio",
+          },
+        },
+        performances: [
+          {
+            showingId: "v1",
+            time: at(3, 18),
+            bookingUrl: "https://riocinema.org.uk/book/6",
+          },
+        ],
+      },
+      // Screened in an event that has finished: nothing to book.
+      m6: {
+        title: "Varda Matinee",
+        normalizedTitle: "varda matinee",
+        isUnmatched: true,
+        includedMovies: [{ id: "m3", title: "The Gleaners and I" }],
+        showings: {
+          w1: {
+            category: "multiple-movies",
+            url: "https://riocinema.org.uk/matinee",
+            venueId: "rio",
+          },
+        },
+        performances: [
+          {
+            showingId: "w1",
+            time: at(-1, 14),
+            bookingUrl: "https://riocinema.org.uk/book/7",
+          },
+        ],
+      },
+    });
+    serveSite(published);
+    const { value } = await call(await connect(), "get_film", {
+      title: "the gleaners and i",
+    });
+    expect(value.totalShowings).toBe(1);
+    expect(value.partOf).toEqual([
+      expect.objectContaining({
+        title: "Varda Double Bill",
+        screens: ["Cléo from 5 to 7", "The Gleaners and I"],
+        totalShowings: 1,
+        showings: [
+          expect.objectContaining({
+            venue: "Rio Cinema",
+            bookingUrl: "https://riocinema.org.uk/book/6",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("has no partOf when no event screens it", async () => {
+    serveSite();
+    const { value } = await call(await connect(), "get_film", {
+      title: "Halloween",
+    });
+    expect(value).not.toHaveProperty("partOf");
   });
 
   it("asks which film, when a title names several", async () => {

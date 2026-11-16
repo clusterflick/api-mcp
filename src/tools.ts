@@ -21,6 +21,7 @@ import {
   timestampToLondonDateString,
 } from "@clusterflick/catalogue/utils/format-date";
 import { getCinemaVenueIds } from "@clusterflick/catalogue/utils/get-cinema-venue-ids";
+import { getContainingEvents } from "@clusterflick/catalogue/utils/get-containing-events";
 import { getVenueIdsWithShowings } from "@clusterflick/catalogue/utils/get-venues-with-showings";
 import { getDistanceInMiles } from "@clusterflick/catalogue/utils/geo-distance";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -435,6 +436,23 @@ function findFilm(data: CinemaData, title: string, year?: string) {
   );
 }
 
+/**
+ * A film with only what hasn't started, whatever its category: the site hides
+ * a finished showing too.
+ */
+function upcoming(movie: Movie): Movie {
+  return (
+    apply(
+      { [movie.id]: movie },
+      {
+        ...getDefaultState(),
+        [FilterId.Categories]: null,
+        [FilterId.DateRange]: { start: null, end: null },
+      },
+    )[movie.id] ?? { ...movie, performances: [], showings: {} }
+  );
+}
+
 /** Who's asking, and whether this connection may read their lists. */
 export type Reader = {
   uid: string;
@@ -482,7 +500,7 @@ export function createServer(origin: string, reader: Reader) {
     {
       title: "Get a film",
       description:
-        "One film or event by title: what it is, and every showing from today, soonest first.",
+        "One film or event by title: what it is, and every showing from today, soonest first. `partOf` is the marathons, double bills and other events that also screen it: each a listing of its own, booked as a whole, so its times are the event's and are not counted in `totalShowings`.",
       inputSchema: z.object({
         title: z.string().min(1).describe("The title, as it's listed."),
         year: z
@@ -503,18 +521,32 @@ export function createServer(origin: string, reader: Reader) {
     ({ title, year, limit }) =>
       run(origin, reader, "get_film", (data, marks) => {
         const movie = findFilm(data, title, year);
-        // Only what hasn't started: the site hides a finished showing too.
-        const upcoming = apply(
-          { [movie.id]: movie },
-          {
-            ...getDefaultState(),
-            [FilterId.Categories]: null,
-            [FilterId.DateRange]: { start: null, end: null },
-          },
-        )[movie.id] ?? { ...movie, performances: [], showings: {} };
+        // A marathon is a listing of its own, with the film among those it
+        // screens, so nothing on the film's record says it's on there too.
+        // Left out, an assistant reads the film's showings as every chance
+        // to see it.
+        const partOf = getContainingEvents(movie.id, data.movies)
+          .map((event) => upcoming(event))
+          .filter((event) => event.performances.length > 0)
+          .sort(
+            (a, b) =>
+              Math.min(...a.performances.map(({ time }) => time)) -
+              Math.min(...b.performances.map(({ time }) => time)),
+          )
+          .map((event) => ({
+            ...presentFilm(data, event, origin, { marks }),
+            ...presentPerformances(data, event, origin, 5, marks),
+          }));
         return {
           ...presentFilm(data, movie, origin, { detailed: true, marks }),
-          ...presentPerformances(data, upcoming, origin, limit ?? 30, marks),
+          ...presentPerformances(
+            data,
+            upcoming(movie),
+            origin,
+            limit ?? 30,
+            marks,
+          ),
+          ...(partOf.length > 0 ? { partOf } : {}),
         };
       }),
   );

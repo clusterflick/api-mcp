@@ -554,7 +554,7 @@ export function createServer(origin: string, reader: Reader) {
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       instructions:
-        "Clusterflick lists every film showing in London, from 450+ cinemas and venues. Times are London time. Link people to the `url` of a film or venue, and to `bookingUrl` to book. When the reader has allowed their lists, results are marked `onWatchlist`, `seen` and `yourVenue`, and searches can leave out what they've seen or keep to their watchlist or venues.",
+        "Clusterflick lists every film showing in London, from 500+ cinemas and venues. Times are London time. Link people to the `url` of a film or venue, and to `bookingUrl` to book. When the reader has allowed their lists, results are marked `onWatchlist`, `seen` and `yourVenue`, and searches can leave out what they've seen or keep to their watchlist or venues.",
     },
   );
   const annotations = { readOnlyHint: true, openWorldHint: false };
